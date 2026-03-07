@@ -1058,7 +1058,7 @@ button:
     entity_category: diagnostic
     on_press:
       - update.check:
-          id: ota_http_request
+          id: update_http_request
 
 debug:
   update_interval: 5s
