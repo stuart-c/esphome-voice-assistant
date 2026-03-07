@@ -93,7 +93,8 @@ jobs:
           for manifest in public/*.json; do
             if [ -f "$manifest" ]; then
               filename=$(basename "$manifest")
-              echo "        <li><a href=\"${filename}\">${filename}</a> - <code>${BASE_URL}/${filename}</code></li>" >> public/index.html
+              target="${filename%.manifest.json}"
+              echo "        <li><a href=\"${filename}\">${target}</a> - <code>${BASE_URL}/${filename}</code></li>" >> public/index.html
             fi
           done
 
