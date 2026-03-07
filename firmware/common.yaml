@@ -1052,6 +1052,13 @@ button:
     entity_category: config
     disabled_by_default: true
     icon: "mdi:restart"
+  - platform: template
+    id: update_button
+    name: "Update"
+    entity_category: diagnostic
+    on_press:
+      - update.check:
+          id: ota_http_request
 
 debug:
   update_interval: 5s
