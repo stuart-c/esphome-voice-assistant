@@ -1,0 +1,6 @@
+# ESP32-S3-AUDIO-Board
+
+packages:
+  - !include firmware/board-audio.yaml
+  - !include firmware/common.yaml
+  - !include firmware/led-ring.yaml

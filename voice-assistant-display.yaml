@@ -1,0 +1,6 @@
+# ESP32-S3-RLCD-4.2
+
+packages:
+  - !include firmware/board-lcd.yaml
+  - !include firmware/common.yaml
+  - !include firmware/display.yaml

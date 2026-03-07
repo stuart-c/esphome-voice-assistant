@@ -1,0 +1,73 @@
+substitutions:
+  i2c_sda: GPIO13
+  i2c_scl: GPIO14
+
+  i2s_mclk: GPIO16
+  i2s_bclk: GPIO9
+  i2s_lrclk: GPIO45
+  i2s_din: GPIO10
+  i2s_dout: GPIO8
+
+  center_button_pin: GPIO18
+
+  amp_pin:
+    number: GPIO46
+    ignore_strapping_warning: true
+
+binary_sensor:
+  - platform: gpio
+    id: screen_button
+    pin:
+      number: GPIO0
+      ignore_strapping_warning: true
+    name: Screen Button
+    disabled_by_default: true
+    entity_category: diagnostic
+    on_multi_click:
+      - timing:
+          - ON for at least 50ms
+          - OFF for at least 50ms
+        then:
+          - select.next: screen_name
+
+sensor:
+  - platform: adc
+    pin: GPIO4
+    attenuation: 12db
+    name: "Battery Voltage"
+    id: battery_voltage
+    update_interval: 5min
+    unit_of_measurement: "V"
+    device_class: voltage
+    state_class: measurement
+    entity_category: diagnostic
+    accuracy_decimals: 2
+    filters:
+      # Multiply by 3 to reverse the 200k/100k divider (R1+R2)/R2
+      - multiply: 3.0
+
+  - platform: copy
+    source_id: battery_voltage
+    name: "Battery Percentage"
+    id: battery_percentage
+    unit_of_measurement: "%"
+    device_class: battery
+    accuracy_decimals: 0
+    filters:
+      # Map voltage to percentage for Li-ion
+      # 3.0V = 0%, 4.2V = 100%
+      - calibrate_linear:
+          - 3.0 -> 0
+          - 4.14 -> 100
+      # Ensure the value stays between 0 and 100
+      - clamp:
+          min_value: 0
+          max_value: 100
+          ignore_out_of_range: true
+
+  - platform: shtcx
+    temperature:
+      name: "Temperature"
+    humidity:
+      name: "Humidity"
+    update_interval: 5min

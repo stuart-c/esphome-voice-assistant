@@ -1,0 +1,1057 @@
+substitutions:
+  # Phases of the Voice Assistant
+  # The voice assistant is ready to be triggered by a wake word
+  voice_assist_idle_phase_id: '1'
+  # The voice assistant is waiting for a voice command (after being triggered by the wake word)
+  voice_assist_waiting_for_command_phase_id: '2'
+  # The voice assistant is listening for a voice command
+  voice_assist_listening_for_command_phase_id: '3'
+  # The voice assistant is currently processing the command
+  voice_assist_thinking_phase_id: '4'
+  # The voice assistant is replying to the command
+  voice_assist_replying_phase_id: '5'
+  # The voice assistant is not ready
+  voice_assist_not_ready_phase_id: '10'
+  # The voice assistant encountered an error
+  voice_assist_error_phase_id: '11'
+
+  # Change this to true in case you ahve a hidden SSID at home.
+  hidden_ssid: "false"
+
+  # Substitutions for audio files
+  startup_sound_file: https://github.com/adafruit/Adafruit-Sound-Samples/raw/master/sonic-pi/elec_blup.wav
+  timer_finished_sound_file: https://github.com/esphome/home-assistant-voice-pe/raw/dev/sounds/timer_finished.flac
+  wake_word_triggered_sound_file: https://github.com/esphome/home-assistant-voice-pe/raw/dev/sounds/wake_word_triggered.flac
+  center_button_press_sound_file: https://github.com/esphome/home-assistant-voice-pe/raw/dev/sounds/center_button_press.flac
+  center_button_double_press_sound_file: https://github.com/esphome/home-assistant-voice-pe/raw/dev/sounds/center_button_double_press.flac
+  center_button_triple_press_sound_file: https://github.com/esphome/home-assistant-voice-pe/raw/dev/sounds/center_button_triple_press.flac
+  center_button_long_press_sound_file: https://github.com/esphome/home-assistant-voice-pe/raw/dev/sounds/center_button_long_press.flac
+  factory_reset_initiated_sound_file: https://github.com/esphome/home-assistant-voice-pe/raw/dev/sounds/factory_reset_initiated.mp3
+  factory_reset_cancelled_sound_file: https://github.com/esphome/home-assistant-voice-pe/raw/dev/sounds/factory_reset_cancelled.mp3
+  factory_reset_confirmed_sound_file: https://github.com/esphome/home-assistant-voice-pe/raw/dev/sounds/factory_reset_confirmed.mp3
+  easter_egg_tick_sound_file: https://github.com/esphome/home-assistant-voice-pe/raw/dev/sounds/easter_egg_tick.mp3
+  easter_egg_tada_sound_file: https://github.com/esphome/home-assistant-voice-pe/raw/dev/sounds/easter_egg_tada.mp3
+  error_cloud_expired_sound_file: https://github.com/esphome/home-assistant-voice-pe/raw/dev/sounds/error_cloud_expired.mp3
+
+  #mic lookup
+  mic_channel_0: 'left'
+  mic_channel_1: 'right' # mic wont allow right
+  mic_channel_2: 'stereo' # voice assistant does not support stereo
+
+  #WORKING
+  which_mic: 0 #0=left, 1=right, 2=stereo
+  i2s_sample_rate: 16000 # Works as in sync with microphone (mic must have 16000 for voice assistant)
+  i2s_bits_per_sample: 32
+  i2s_mode_mic: secondary
+  i2s_mode_speaker: secondary
+  i2s_use_apll: true
+  i2s_bps_spk: 16bit
+  i2s_bps_mic: 16bit
+  i2s_mclk_multiple: 256 # 128, 256, 384, 512
+
+esphome:
+  name: voice-assistant
+  friendly_name: Voice Assistant
+  name_add_mac_suffix: true
+  min_version: 2026.2.0
+  on_boot:
+    - priority: 375
+      then:
+        - script.execute: control_leds
+        - delay: 1s
+        - switch.turn_on: internal_speaker_amp
+        # If after 10 minutes, the device is still initializing (It did not yet connect to Home Assistant), turn off the init_in_progress variable and run the script to refresh the UI
+        - delay: 10min
+        - if:
+            condition:
+              lambda: return id(init_in_progress);
+            then:
+              - lambda: id(init_in_progress) = false;
+              - script.execute: control_leds
+    - priority: 500
+      then:
+        - pcf85063.read_time
+    - priority: 650
+      then:
+        - wait_until:
+            api.connected:
+        - wait_until:
+            micro_wake_word.is_running:
+        - script.execute:
+            id: play_sound
+            priority: true
+            sound_file: "startup_sound"
+
+esp32:
+  board: esp32-s3-devkitc-1
+  cpu_frequency: 240MHz
+  variant: esp32s3
+  flash_size: 16MB
+  framework:
+    type: esp-idf
+    version: recommended
+    sdkconfig_options:
+      CONFIG_ESP32S3_DATA_CACHE_64KB: "y"
+      CONFIG_ESP32S3_DATA_CACHE_LINE_64B: "y"
+      CONFIG_ESP32S3_INSTRUCTION_CACHE_32KB: "y"
+
+      # Moves instructions and read only data from flash into PSRAM on boot.
+      # Both enabled allows instructions to execute while a flash operation is in progress without needing to be placed in IRAM.
+      # Considerably speeds up mWW at the cost of using more PSRAM.
+      CONFIG_SPIRAM_RODATA: "y"
+      CONFIG_SPIRAM_FETCH_INSTRUCTIONS: "y"
+
+      CONFIG_BT_ALLOCATION_FROM_SPIRAM_FIRST: "y"
+      CONFIG_BT_BLE_DYNAMIC_ENV_MEMORY: "y"
+
+      CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC: "y"
+      CONFIG_MBEDTLS_SSL_PROTO_TLS1_3: "y"  # TLS1.3 support isn't enabled by default in IDF 5.1.5
+
+wifi:
+  id: wifi_id
+  fast_connect: ${hidden_ssid}
+  on_connect:
+    - lambda: id(improv_ble_in_progress) = false;
+    - script.execute: control_leds
+  on_disconnect:
+    - script.execute: control_leds
+
+network:
+  enable_ipv6: true
+
+# Enable logging
+logger:
+  level: DEBUG
+  logs:
+    sensor: WARN  # avoids logging debug sensor updates
+
+# Enable Home Assistant API
+api:
+  id: api_id
+  on_client_connected:
+    - script.execute: control_leds
+  on_client_disconnected:
+    - script.execute: control_leds
+  encryption:   # Uses key set by Home Assistant
+
+ota:
+  - platform: esphome
+    id: ota_esphome
+
+# Bluetooth Proxy
+esp32_ble_tracker:
+
+bluetooth_proxy:
+  active: true
+
+i2c:
+  - id: internal_i2c
+    sda: $i2c_sda
+    scl: $i2c_scl
+    frequency: 400kHz
+
+psram:
+  mode: octal
+  speed: 80MHz
+  ignore_not_found: false  # Allows configuring WiFi driver to use more resources (done automatically by the speaker media player)
+
+# RTC
+time:
+  - platform: pcf85063
+    id: rtc_time
+    update_interval: never
+    on_time:
+      # Every minute
+      - seconds: 0
+        minutes: '*'
+        then:
+          - script.execute: time_tick
+  - platform: homeassistant
+    on_time_sync:
+      then:
+        - pcf85063.write_time
+
+globals:
+  # Global initialization variable. Initialized to true and set to false once everything is connected. Only used to have a smooth "plugging" experience
+  - id: init_in_progress
+    type: bool
+    restore_value: no
+    initial_value: 'true'
+  # Global variable storing the state of ImprovBLE. Used to draw different LED animations
+  - id: improv_ble_in_progress
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  # Global variable tracking the phase of the voice assistant (defined above). Initialized to not_ready
+  - id: voice_assistant_phase
+    type: int
+    restore_value: no
+    initial_value: ${voice_assist_not_ready_phase_id}
+  # Global variable storing the first active timer
+  - id: first_active_timer
+    type: voice_assistant::Timer
+    restore_value: false
+  # Global variable storing if a timer is active
+  - id: is_timer_active
+    type: bool
+    restore_value: false
+  # Global variable storing if a factory reset was requested. If it is set to true, the device will factory reset once the center button is released
+  - id: factory_reset_requested
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+
+switch:
+  # This is the master mute switch. It is exposed to Home Assistant.
+  - platform: template
+    id: master_mute_switch
+    restore_mode: RESTORE_DEFAULT_OFF
+    icon: "mdi:microphone-off"
+    name: Mute
+    entity_category: config
+    lambda: |-
+      // Muted if the microphone's software mute switch is enabled
+      return id(i2s_mics).get_mute_state();
+    turn_on_action:
+      then:
+        - microphone.mute:
+    turn_off_action:
+      then:
+        - microphone.unmute:
+    on_turn_on:
+      - script.execute: control_leds
+    on_turn_off:
+      - script.execute: control_leds
+
+  # Wake Word Sound Switch.
+  - platform: template
+    id: wake_sound
+    name: Wake sound
+    icon: "mdi:bullhorn"
+    entity_category: config
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+
+  # Internal switch to track when a timer is ringing on the device.
+  - platform: template
+    id: timer_ringing
+    optimistic: true
+    internal: true
+    restore_mode: ALWAYS_OFF
+    on_turn_off:
+      # Disable stop wake word
+      - micro_wake_word.disable_model: stop
+      - script.execute: disable_repeat
+      # Stop any current announcement (ie: stop the timer ring mid playback)
+      - if:
+          condition:
+            media_player.is_announcing:
+              id: external_media_player
+          then:
+            media_player.stop:
+              announcement: true
+              id: external_media_player
+      # Set back ducking ratio to zero
+      - mixer_speaker.apply_ducking:
+          id: media_mixing_input
+          decibel_reduction: 0
+          duration: 1.0s
+      - script.execute: control_leds
+    on_turn_on:
+      # Duck audio
+      - mixer_speaker.apply_ducking:
+          id: media_mixing_input
+          decibel_reduction: 20
+          duration: 0.0s
+      # Enable stop wake word
+      - micro_wake_word.enable_model: stop
+      # Ring timer
+      - script.execute: ring_timer
+      - script.execute: control_leds
+      # If 15 minutes have passed and the timer is still ringing, stop it.
+      - delay: 15min
+      - switch.turn_off: timer_ringing
+
+  - platform: gpio
+    pin: $amp_pin
+    id: internal_speaker_amp
+    name: "Internal speaker amp"
+    entity_category: config
+    restore_mode: ALWAYS_OFF
+    internal: true
+
+binary_sensor:
+  # Center Button. Used for many things (See on_multi_click)
+  - platform: gpio
+    id: center_button
+    pin: $center_button_pin
+    on_press:
+      - script.execute: control_leds
+    on_release:
+      - script.execute: control_leds
+      # If a factory reset is requested, factory reset on release
+      - if:
+          condition:
+            lambda: return id(factory_reset_requested);
+          then:
+            - button.press: factory_reset_button
+    on_multi_click:
+      # Simple Click:
+      #   - Abort "things" in order
+      #     - Timer
+      #     - Announcements
+      #     - Voice Assistant Pipeline run
+      #     - Music
+      #   - Starts the voice assistant if it is not yet running and if the device is not muted.
+      - timing:
+          - ON for at most 1s
+          - OFF for at least 0.25s
+        then:
+          - if:
+              condition:
+                lambda: return !id(init_in_progress);
+              then:
+                - if:
+                    condition:
+                      switch.is_on: timer_ringing
+                    then:
+                      - switch.turn_off: timer_ringing
+                    else:
+                      - if:
+                          condition:
+                            voice_assistant.is_running:
+                          then:
+                            - voice_assistant.stop:
+                          else:
+                            - if:
+                                condition:
+                                  media_player.is_announcing:
+                                    id: external_media_player
+                                then:
+                                  media_player.stop:
+                                    announcement: true
+                                    id: external_media_player
+                                else:
+                                  - if:
+                                      condition:
+                                        media_player.is_playing:
+                                          id: external_media_player
+                                      then:
+                                        - media_player.pause:
+                                            id: external_media_player
+                                      else:
+                                        - if:
+                                            condition:
+                                              and:
+                                                - switch.is_off: master_mute_switch
+                                                - not: voice_assistant.is_running
+                                            then:
+                                              - script.execute:
+                                                  id: play_sound
+                                                  priority: true
+                                                  sound_file: "center_button_press_sound"
+                                              - delay: 300ms
+                                              - voice_assistant.start:
+      # Double Click
+      #  . Exposed as an event entity. To be used in automations inside Home Assistant
+      - timing:
+          - ON for at most 1s
+          - OFF for at most 0.25s
+          - ON for at most 1s
+          - OFF for at least 0.25s
+        then:
+          - if:
+              condition:
+                lambda: return !id(init_in_progress);
+              then:
+                - script.execute:
+                    id: play_sound
+                    priority: false
+                    sound_file: "center_button_double_press_sound"
+                - event.trigger:
+                    id: button_press_event
+                    event_type: "double_press"
+      # Triple Click
+      #  . Exposed as an event entity. To be used in automations inside Home Assistant
+      - timing:
+          - ON for at most 1s
+          - OFF for at most 0.25s
+          - ON for at most 1s
+          - OFF for at most 0.25s
+          - ON for at most 1s
+          - OFF for at least 0.25s
+        then:
+          - if:
+              condition:
+                lambda: return !id(init_in_progress);
+              then:
+                - script.execute:
+                    id: play_sound
+                    priority: false
+                    sound_file: "center_button_triple_press_sound"
+                - event.trigger:
+                    id: button_press_event
+                    event_type: "triple_press"
+      # Long Press
+      #  . Exposed as an event entity. To be used in automations inside Home Assistant
+      - timing:
+          - ON for at least 1s
+        then:
+          - if:
+              condition:
+                lambda: return !id(init_in_progress);
+              then:
+                - script.execute:
+                    id: play_sound
+                    priority: false
+                    sound_file: "center_button_long_press_sound"
+                - event.trigger:
+                    id: button_press_event
+                    event_type: "long_press"
+      # Very important do not remove. Trust me :D
+      - timing:
+          # H ....
+          - ON for at most 0.2s
+          - OFF for 0s to 2s
+          - ON for at most 0.2s
+          - OFF for 0s to 2s
+          - ON for at most 0.2s
+          - OFF for 0s to 2s
+          - ON for at most 0.2s
+          - OFF for 0.5s to 2s
+          # A ._
+          - ON for at most 0.2s
+          - OFF for 0s to 2s
+          - ON for 0.2s to 2s
+        then:
+          - if:
+              condition:
+                lambda: return !id(init_in_progress);
+              then:
+                - script.execute:
+                    id: play_sound
+                    priority: true
+                    sound_file: "easter_egg_tick_sound"
+                - delay: 4s
+                - script.execute:
+                    id: play_sound
+                    priority: true
+                    sound_file: "easter_egg_tada_sound"
+                - event.trigger:
+                    id: button_press_event
+                    event_type: "easter_egg_press"
+      # Factory Reset Warning
+      #  . Audible and Visible warning.
+      - timing:
+          - ON for at least 10s
+        then:
+          - script.execute:
+              id: play_sound
+              priority: true
+              sound_file: "factory_reset_initiated_sound"
+          - wait_until:
+              binary_sensor.is_off: center_button
+          - if:
+              condition:
+                lambda: return !id(factory_reset_requested);
+              then:
+                - script.execute:
+                    id: play_sound
+                    priority: true
+                    sound_file: "factory_reset_cancelled_sound"
+      # Factory Reset Confirmed.
+      #  . Audible warning to prompt user to release the button
+      #  . Set factory_reset_requested to true
+      - timing:
+          - ON for at least 22s
+        then:
+          - script.execute:
+              id: play_sound
+              priority: true
+              sound_file: "factory_reset_confirmed_sound"
+          - lambda: id(factory_reset_requested) = true;
+
+sensor:
+  - platform: wifi_signal # Reports the WiFi signal strength/RSSI in dB
+    name: "WiFi Signal dB"
+    id: wifi_signal_db
+    update_interval: 5min
+    entity_category: "diagnostic"
+
+  - platform: copy # Reports the WiFi signal strength in %
+    source_id: wifi_signal_db
+    name: "WiFi Signal Percentage"
+    id: wifi_signal_percentage
+    filters:
+      - lambda: return min(max(2 * (x + 100.0), 0.0), 100.0);
+    unit_of_measurement: "%"
+    entity_category: "diagnostic"
+    device_class: ""
+
+event:
+  # Event entity exposed to the user to automate on complex center button presses.
+  # The simple press is not exposed as it is used to control the device itself.
+  - platform: template
+    id: button_press_event
+    name: "Button press"
+    icon: mdi:button-pointer
+    device_class: button
+    event_types:
+      - double_press
+      - triple_press
+      - long_press
+      - easter_egg_press
+
+script:
+  # Script executed when the timer is ringing, to playback sounds.
+  - id: ring_timer
+    then:
+      - script.execute: enable_repeat_one
+      - script.execute:
+          id: play_sound
+          priority: true
+          sound_file: "timer_finished_sound"
+
+  # Script executed when the timer is ringing, to repeat the timer finished sound.
+  - id: enable_repeat_one
+    then:
+      - media_player.repeat_one:
+          id: external_media_player
+          announcement: true
+      # Turn on the repeat mode and pause for 500 ms between playlist items/repeats
+      - lambda: |-
+            id(external_media_player)->set_playlist_delay_ms(1, 500);
+
+  # Script execute when the timer is done ringing, to disable repeat mode.
+  - id: disable_repeat
+    then:
+      # Turn off the repeat mode and pause for 0 ms between playlist items/repeats
+      - media_player.repeat_off:
+          id: external_media_player
+          announcement: true
+      - lambda: |-
+            id(external_media_player)->set_playlist_delay_ms(1, 0);
+
+  # Script executed when we want to play sounds on the device.
+  - id: play_sound
+    parameters:
+      priority: bool
+      sound_file: string
+    then:
+      - if:
+          condition:
+            lambda: return priority;
+          then:
+            - media_player.stop:
+                id: external_media_player
+                announcement: true
+      - lambda: |-
+          if ( (id(external_media_player).state != media_player::MediaPlayerState::MEDIA_PLAYER_STATE_ANNOUNCING ) || priority) {
+            id(external_media_player)
+              ->make_call()
+              .set_media_url("file://" + sound_file)
+              .set_announcement(true)
+              .perform();
+          }
+
+  # Script used to fetch the first active timer (Stored in global first_active_timer)
+  - id: fetch_first_active_timer
+    then:
+      - lambda: |
+          const auto &timers = id(va).get_timers();
+          auto output_timer = *timers.begin();
+          for (const auto &timer : timers) {
+            if (timer.is_active && timer.seconds_left <= output_timer.seconds_left) {
+              output_timer = timer;
+            }
+          }
+          id(first_active_timer) = output_timer;
+
+  # Script used to check if a timer is active (Stored in global is_timer_active)
+  - id: check_if_timers_active
+    then:
+      - lambda: |
+          const auto &timers = id(va).get_timers();
+          bool output = false;
+          for (const auto &timer : timers) {
+            if (timer.is_active) {
+              output = true;
+            }
+          }
+          id(is_timer_active) = output;
+
+  # Script used activate the stop word if the TTS step is long.
+  # Why is this wrapped on a script?
+  #   Becasue we want to stop the sequence if the TTS step is faster than that.
+  #   This allows us to prevent having the deactivation of the stop word before its own activation.
+  - id: activate_stop_word_once
+    then:
+      - wait_until:
+          condition:
+            media_player.is_announcing:
+              id: external_media_player
+          timeout: 5s
+      - delay: 1s
+      # Enable stop wake word
+      - if:
+          condition:
+            switch.is_off: timer_ringing
+          then:
+            - micro_wake_word.enable_model: stop
+            - wait_until:
+                not:
+                  media_player.is_announcing:
+                    id: external_media_player
+            - if:
+                condition:
+                  switch.is_off: timer_ringing
+                then:
+                  - micro_wake_word.disable_model: stop
+
+# Audio
+audio_dac:
+  - platform: es8311
+    id: es8311_dac
+    i2c_id: internal_i2c
+    use_mclk: true
+    sample_rate: $i2s_sample_rate
+    bits_per_sample: $i2s_bps_spk
+    force_master: true
+    mclk_multiple: $i2s_mclk_multiple
+
+i2s_audio:
+  - id: i2s_output
+    i2s_lrclk_pin:
+      number: $i2s_lrclk
+      allow_other_uses: true
+    i2s_bclk_pin:
+      number: $i2s_bclk
+      allow_other_uses: true
+    i2s_mclk_pin:
+      number: $i2s_mclk
+
+  - id: i2s_input
+    i2s_lrclk_pin:
+      number: $i2s_lrclk
+      allow_other_uses: true
+    i2s_bclk_pin:
+      number: $i2s_bclk
+      allow_other_uses: true
+
+audio_adc:
+  - platform: es7210
+    id: adc_mic
+    i2c_id: internal_i2c
+    sample_rate: $i2s_sample_rate
+    bits_per_sample: $i2s_bps_mic
+
+microphone:
+  - platform: i2s_audio
+    id: i2s_mics
+    i2s_din_pin: $i2s_din
+    adc_type: external
+    pdm: false
+    sample_rate: 16000
+    bits_per_sample: $i2s_bps_mic
+    i2s_mode: $i2s_mode_mic
+    i2s_audio_id: i2s_input
+    channel: ${mic_channel_${which_mic}}
+    use_apll: $i2s_use_apll
+    mclk_multiple: $i2s_mclk_multiple
+
+speaker:
+  # Hardware speaker output
+  - platform: i2s_audio
+    id: i2s_audio_speaker
+    sample_rate: $i2s_sample_rate
+    i2s_mode: secondary #using the patched es8311
+    i2s_dout_pin: $i2s_dout
+    bits_per_sample: 16bit #TEMP FIX
+    i2s_audio_id: i2s_output
+    dac_type: external
+    channel: stereo #WORKS #TEST: STREAM ERROR
+    timeout: never
+    buffer_duration: 100ms
+    audio_dac: es8311_dac
+    use_apll: $i2s_use_apll
+    mclk_multiple: $i2s_mclk_multiple
+
+  # Virtual speakers to combine the announcement and media streams together into one output
+  - platform: mixer
+    id: mixing_speaker
+    output_speaker: i2s_audio_speaker
+    num_channels: 2
+    task_stack_in_psram: true
+    source_speakers:
+      - id: announcement_mixing_input
+        timeout: never
+      - id: media_mixing_input
+        timeout: never
+
+  # Virtual speakers to resample each pipelines' audio, if necessary, as the mixer speaker requires the same sample rate
+  - platform: resampler
+    id: announcement_resampling_speaker
+    output_speaker: announcement_mixing_input
+
+  - platform: resampler
+    id: media_resampling_speaker
+    output_speaker: media_mixing_input
+
+sendspin:
+  id: sendspin_hub
+  task_stack_in_psram: true
+  kalman_process_error: 0.01
+
+http_request:
+
+media_source:
+  - platform: sendspin
+    id: sendspin_source
+  - platform: http_request
+    id: http_source
+    buffer_size: 500000
+  - platform: file
+    id: file_source
+    files:
+      - id: startup_sound
+        file: ${startup_sound_file}
+      - id: center_button_press_sound
+        file: ${center_button_press_sound_file}
+      - id: center_button_double_press_sound
+        file: ${center_button_double_press_sound_file}
+      - id: center_button_triple_press_sound
+        file: ${center_button_triple_press_sound_file}
+      - id: center_button_long_press_sound
+        file: ${center_button_long_press_sound_file}
+      - id: factory_reset_initiated_sound
+        file: ${factory_reset_initiated_sound_file}
+      - id: factory_reset_cancelled_sound
+        file: ${factory_reset_cancelled_sound_file}
+      - id: factory_reset_confirmed_sound
+        file: ${factory_reset_confirmed_sound_file}
+      - id: timer_finished_sound
+        file: ${timer_finished_sound_file}
+      - id: wake_word_triggered_sound
+        file: ${wake_word_triggered_sound_file}
+      - id: easter_egg_tick_sound
+        file: ${easter_egg_tick_sound_file}
+      - id: easter_egg_tada_sound
+        file: ${easter_egg_tada_sound_file}
+      - id: error_cloud_expired
+        file: ${error_cloud_expired_sound_file}
+
+media_player:
+  - platform: sendspin
+    id: sendspin_group_media_player
+
+  - platform: speaker_source
+    id: external_media_player
+    name: Media Player
+    announcement_speaker: announcement_resampling_speaker
+    media_speaker: media_resampling_speaker
+    announcement_pipeline:
+      format: FLAC     # FLAC is the least processor intensive codec
+      num_channels: 1  # Stereo audio is unnecessary for announcements
+      sample_rate: 48000 #Supported by Music Assistant
+
+    media_pipeline:
+      format: FLAC     # FLAC is the least processor intensive codec
+      num_channels: 2
+      sample_rate: 48000
+    volume_increment: 0.05
+    volume_min: 0.4
+    volume_max: 0.85
+    sources:
+      - file_source
+      - http_source
+      - sendspin_source
+    on_mute:
+      - script.execute: control_leds
+    on_unmute:
+      - script.execute: control_leds
+    on_volume:
+      - script.execute: control_leds
+    on_announcement:
+      - mixer_speaker.apply_ducking:
+          id: media_mixing_input
+          decibel_reduction: 20
+          duration: 0.0s
+    on_state:
+      if:
+        condition:
+          and:
+            - switch.is_off: timer_ringing
+            - not:
+                voice_assistant.is_running:
+            - not:
+                media_player.is_announcing: external_media_player
+        then:
+          - mixer_speaker.apply_ducking:
+              id: media_mixing_input
+              decibel_reduction: 0
+              duration: 1.0s
+
+# Sendspin related components are pinned to specific commits for reproducible builds
+external_components:
+  - source:
+      # https://github.com/esphome/esphome/pull/12256
+      type: git
+      url: https://github.com/esphome/esphome
+      ref: a2d98e1d5e020200db8f3caf27a74a939a661dc4
+    components: [audio]
+  - source:
+      # https://github.com/esphome/esphome/pull/12258
+      type: git
+      url: https://github.com/esphome/esphome
+      ref: b4b7c5b25ebe0f2ab988f700219fa3c57b2377b7
+    components: [media_player]
+  - source:
+      # https://github.com/esphome/esphome/pull/12284
+      type: git
+      url: https://github.com/esphome/esphome
+      ref: d48058e140c98f5c2d902661d851a6b712d62434
+    components: [sendspin]
+  - source:
+      # https://github.com/esphome/esphome/pull/14013
+      type: git
+      url: https://github.com/esphome/esphome
+      ref: 51dcce3d1f22865ebb458a5447bbc877ac946b5a
+    components: [mdns]
+  - source:
+      # https://github.com/esphome/esphome/pull/12429
+      type: git
+      url: https://github.com/esphome/esphome
+      ref: b49b09b6ae56502aa3ce51be86f90d732d019b2c
+    refresh: 0s
+    components: [file, http_request, media_source, speaker_source]
+
+  - source:
+      type: git
+      url: "https://github.com/sw3Dan/waveshare-s2-audio_esphome_voice"
+      ref: main
+    components: [ es8311 ]
+    refresh: 24h
+
+micro_wake_word:
+  id: mww
+  microphone:
+    microphone: i2s_mics
+    channels: $which_mic
+  stop_after_detection: false
+  models:
+    - model: https://github.com/kahrendt/microWakeWord/releases/download/okay_nabu_20241226.3/okay_nabu.json
+      id: okay_nabu
+    - model: hey_jarvis
+      id: hey_jarvis
+    - model: hey_mycroft
+      id: hey_mycroft
+    - model: https://github.com/kahrendt/microWakeWord/releases/download/stop/stop.json
+      id: stop
+      internal: true
+  vad:
+    probability_cutoff: 0.03 #0.03
+
+  on_wake_word_detected:
+    - logger.log:
+        format: "Wake word detected: %s"
+        args: [ wake_word.c_str() ]
+    # If the wake word is detected when the device is muted (Possible with the software mute switch): Do nothing
+    - if:
+        condition:
+          switch.is_off: master_mute_switch
+        then:
+          # If a timer is ringing: Stop it, do not start the voice assistant (We can stop timer from voice!)
+          - if:
+              condition:
+                switch.is_on: timer_ringing
+              then:
+                - switch.turn_off: timer_ringing
+              # Stop voice assistant if running
+              else:
+                - if:
+                    condition:
+                      voice_assistant.is_running:
+                    then:
+                      voice_assistant.stop:
+                    # Stop any other media player announcement
+                    else:
+                      - if:
+                          condition:
+                            media_player.is_announcing:
+                              id: external_media_player
+                          then:
+                            - media_player.stop:
+                                announcement: true
+                                id: external_media_player
+                          # Start the voice assistant and play the wake sound, if enabled
+                          else:
+                            - if:
+                                condition:
+                                  switch.is_on: wake_sound
+                                then:
+                                  - script.execute:
+                                      id: play_sound
+                                      priority: true
+                                      sound_file: "wake_word_triggered_sound"
+                                  - delay: 300ms
+                            - voice_assistant.start:
+                                wake_word: !lambda return wake_word;
+
+select:
+  - platform: template
+    name: "Wake word sensitivity"
+    optimistic: true
+    initial_option: Slightly sensitive
+    restore_value: true
+    entity_category: config
+    options:
+      - Slightly sensitive
+      - Moderately sensitive
+      - Very sensitive
+    on_value:
+      # Sets specific wake word probabilities computed for each particular model
+      # Note probability cutoffs are set as a quantized uint8 value, each comment has the corresponding floating point cutoff
+      # False Accepts per Hour values are tested against all units and channels from the Dinner Party Corpus.
+      # These cutoffs apply only to the specific models included in the firmware: okay_nabu@20241226.3, hey_jarvis@v2, hey_mycroft@v2
+      lambda: |-
+        if (x == "Slightly sensitive") {
+          id(okay_nabu).set_probability_cutoff(217);    // 0.85 -> 0.000 FAPH on DipCo (Manifest's default)
+          id(hey_jarvis).set_probability_cutoff(247);   // 0.97 -> 0.563 FAPH on DipCo (Manifest's default)
+          id(hey_mycroft).set_probability_cutoff(253);  // 0.99 -> 0.567 FAPH on DipCo
+        } else if (x == "Moderately sensitive") {
+          id(okay_nabu).set_probability_cutoff(176);    // 0.69 -> 0.376 FAPH on DipCo
+          id(hey_jarvis).set_probability_cutoff(235);   // 0.92 -> 0.939 FAPH on DipCo
+          id(hey_mycroft).set_probability_cutoff(242);  // 0.95 -> 1.502 FAPH on DipCo (Manifest's default)
+        } else if (x == "Very sensitive") {
+          id(okay_nabu).set_probability_cutoff(50);
+          //id(okay_nabu).set_probability_cutoff(143);    // 0.56 -> 0.751 FAPH on DipCo
+          id(hey_jarvis).set_probability_cutoff(212);   // 0.83 -> 1.502 FAPH on DipCo
+          id(hey_mycroft).set_probability_cutoff(237);  // 0.93 -> 1.878 FAPH on DipCo
+        }
+
+voice_assistant:
+  id: va
+  microphone:
+    id: va_mic
+    microphone: i2s_mics
+    channels: $which_mic #correct that it's left/right cannel OR number of channels?
+  media_player: external_media_player
+  micro_wake_word: mww
+  use_wake_word: false
+  noise_suppression_level: 0 #2 #0
+  auto_gain: 0 dbfs
+  volume_multiplier: 1
+  on_client_connected:
+    - lambda: id(init_in_progress) = false;
+    - micro_wake_word.start:
+    - lambda: id(voice_assistant_phase) = ${voice_assist_idle_phase_id};
+    - script.execute: control_leds
+  on_client_disconnected:
+    - voice_assistant.stop:
+    - lambda: id(voice_assistant_phase) = ${voice_assist_not_ready_phase_id};
+    - script.execute: control_leds
+  on_error:
+    # Only set the error phase if the error code is different than duplicate_wake_up_detected or stt-no-text-recognized
+    # These two are ignored for a better user experience
+    - if:
+        condition:
+          and:
+            - lambda: return !id(init_in_progress);
+            - lambda: return code != "duplicate_wake_up_detected";
+            - lambda: return code != "stt-no-text-recognized";
+        then:
+          - lambda: id(voice_assistant_phase) = ${voice_assist_error_phase_id};
+          - script.execute: control_leds
+    # If the error code is cloud-auth-failed, serve a local audio file guiding the user.
+    - if:
+        condition:
+          - lambda: return code == "cloud-auth-failed";
+        then:
+          - script.execute:
+              id: play_sound
+              priority: true
+              sound_file: "error_cloud_expired"
+  # When the voice assistant starts: Play a wake up sound, duck audio.
+  on_start:
+    - mixer_speaker.apply_ducking:
+        id: media_mixing_input
+        decibel_reduction: 30 #20  # Number of dB quieter; higher implies more quiet, 0 implies full volume
+        duration: 0.0s         # The duration of the transition (default is no transition)
+  on_listening:
+    - lambda: id(voice_assistant_phase) = ${voice_assist_waiting_for_command_phase_id};
+    - script.execute: control_leds
+  on_stt_vad_start:
+    - lambda: id(voice_assistant_phase) = ${voice_assist_listening_for_command_phase_id};
+    - script.execute: control_leds
+  on_stt_vad_end:
+    - lambda: id(voice_assistant_phase) = ${voice_assist_thinking_phase_id};
+    - script.execute: control_leds
+  on_intent_progress:
+    - if:
+        condition:
+          # A nonempty x variable means a streaming TTS url was sent to the media player
+          lambda: 'return !x.empty();'
+        then:
+          - lambda: id(voice_assistant_phase) = ${voice_assist_replying_phase_id};
+          - script.execute: control_leds
+          # Start a script that would potentially enable the stop word if the response is longer than a second
+          - script.execute: activate_stop_word_once
+  on_tts_start:
+    - script.execute:
+        id: script_tts_start
+        x: !lambda return x;
+    - if:
+        condition:
+          # The intent_progress trigger didn't start the TTS Reponse
+          lambda: 'return id(voice_assistant_phase) != ${voice_assist_replying_phase_id};'
+        then:
+          - lambda: id(voice_assistant_phase) = ${voice_assist_replying_phase_id};
+          - script.execute: control_leds
+          # Start a script that would potentially enable the stop word if the response is longer than a second
+          - script.execute: activate_stop_word_once
+  # When the voice assistant ends ...
+  on_end:
+    - wait_until:
+        not:
+          voice_assistant.is_running:
+    # Stop ducking audio.
+    - mixer_speaker.apply_ducking:
+        id: media_mixing_input
+        decibel_reduction: 0
+        duration: 1.0s
+    # If the end happened because of an error, let the error phase on for a second
+    - if:
+        condition:
+          lambda: return id(voice_assistant_phase) == ${voice_assist_error_phase_id};
+        then:
+          - delay: 1s
+    # Reset the voice assistant phase id.
+    - lambda: id(voice_assistant_phase) = ${voice_assist_idle_phase_id};
+    - script.execute: tts_delay
+    - script.execute: control_leds
+  on_timer_finished:
+    - switch.turn_on: timer_ringing
+  on_timer_started:
+    - script.execute: control_leds
+  on_timer_cancelled:
+    - script.execute: control_leds
+  on_timer_updated:
+    - script.execute: control_leds
+  on_timer_tick:
+    - script.execute: control_leds
+
+button:
+  - platform: factory_reset
+    id: factory_reset_button
+    name: "Factory Reset"
+    entity_category: diagnostic
+    internal: true
+  - platform: restart
+    id: restart_button
+    name: "Restart"
+    entity_category: config
+    disabled_by_default: true
+    icon: "mdi:restart"
+
+debug:
+  update_interval: 5s

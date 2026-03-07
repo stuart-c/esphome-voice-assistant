@@ -1,0 +1,48 @@
+substitutions:
+  i2c_sda: GPIO11
+  i2c_scl: GPIO10
+
+  i2s_mclk: GPIO12
+  i2s_bclk: GPIO13 #SCLK
+  i2s_lrclk: GPIO14 #LRCK/WS
+  i2s_din: GPIO15
+  i2s_dout: GPIO16
+
+  center_button_pin:
+    tca9555: tca9555_ex
+    mode: INPUT
+    number: 10
+    inverted: true
+
+  amp_pin:
+    tca9555: tca9555_ex
+    number: 8
+
+# I2C Expander
+tca9555:
+  - id: tca9555_ex
+    i2c_id: internal_i2c
+    address: 0x20
+
+binary_sensor:
+  - platform: gpio
+    id: down_button
+    pin:
+      tca9555: tca9555_ex
+      mode: INPUT
+      number: 9
+      inverted: true
+
+    on_press:
+      - media_player.volume_down: external_media_player
+
+  - platform: gpio
+    id: up_button
+    pin:
+      tca9555: tca9555_ex
+      mode: INPUT
+      number: 11
+      inverted: true
+
+    on_press:
+      - media_player.volume_up: external_media_player
