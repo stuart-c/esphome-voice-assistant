@@ -28,7 +28,7 @@ update:
   - platform: http_request
     name: None
     id: update_http_request
-    source: https://stuart-c.github.io/voice-assistant/voice-assistant-display/manifest.json
+    source: https://stuart-c.github.io/voice-assistant/voice-assistant-display.json
 
 dashboard_import:
   package_import_url: github://stuart-c/voice-assistant/voice-assistant-display.yaml
