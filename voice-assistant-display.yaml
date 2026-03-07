@@ -2,5 +2,8 @@
 
 packages:
   - !include firmware/board-lcd.yaml
-  - !include firmware/common.yaml
+  - !include
+    file: firmware/common.yaml
+    vars:
+      name: voice-assistant-display
   - !include firmware/display.yaml

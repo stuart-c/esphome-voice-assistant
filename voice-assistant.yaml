@@ -2,5 +2,8 @@
 
 packages:
   - !include firmware/board-audio.yaml
-  - !include firmware/common.yaml
+  - !include
+    file: firmware/common.yaml
+    vars:
+      name: voice-assistant
   - !include firmware/led-ring.yaml

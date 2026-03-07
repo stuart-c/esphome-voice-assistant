@@ -50,7 +50,7 @@ substitutions:
   i2s_mclk_multiple: 256 # 128, 256, 384, 512
 
 esphome:
-  name: voice-assistant
+  name: ${name}
   friendly_name: Voice Assistant
   name_add_mac_suffix: true
   min_version: 2026.2.0
