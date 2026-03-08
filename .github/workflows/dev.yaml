@@ -79,6 +79,10 @@ jobs:
               .latest { background: #28a745; color: white; padding: 2px 8px; border-radius: 3px; font-size: 0.8em; margin-left: 10px; }
               .manifest-section { background: #f8f9fa; padding: 15px; border-radius: 5px; margin-bottom: 30px; }
             </style>
+            <script
+              type="module"
+              src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"
+            ></script>
           </head>
           <body>
             <h1>Voice Assistant Firmware</h1>
@@ -94,7 +98,7 @@ jobs:
             if [ -f "$manifest" ]; then
               filename=$(basename "$manifest")
               target="${filename%.manifest.json}"
-              echo "        <li><a href=\"${filename}\">${target}</a> - <code>${BASE_URL}/dev/${filename}</code></li>" >> public/index.html
+              echo "        <li><a href=\"dev/${filename}\">${target}</a> - <code>${BASE_URL}/dev/${filename}</code> <esp-web-install-button manifest="dev/${filename}"></esp-web-install-button></li>" >> public/index.html
             fi
           done
 
