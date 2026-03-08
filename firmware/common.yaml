@@ -1054,7 +1054,7 @@ button:
     icon: "mdi:restart"
   - platform: template
     id: update_button
-    name: "Update"
+    name: "Update Check"
     entity_category: diagnostic
     disabled_by_default: true
     on_press:
