@@ -1056,6 +1056,7 @@ button:
     id: update_button
     name: "Update"
     entity_category: diagnostic
+    disabled_by_default: true
     on_press:
       - update.check:
           id: update_http_request
