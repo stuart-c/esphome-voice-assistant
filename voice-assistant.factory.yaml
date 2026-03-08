@@ -58,18 +58,18 @@ esp32_improv:
 
 switch:
   - platform: template
-    id: beta_firmware
-    name: Beta firmware
+    id: dev_firmware
+    name: Dev firmware
     icon: "mdi:test-tube"
     disabled_by_default: true
     entity_category: config
     optimistic: true
     restore_mode: RESTORE_DEFAULT_OFF
     on_turn_on:
-      - logger.log: "OTA updates set to use Beta firmware"
-      - lambda: id(update_http_request).set_source_url("https://stuart-c.github.io/voice-assistant/voice-assistant/manifest-beta.json");
+      - logger.log: "OTA updates set to use Dev firmware"
+      - lambda: id(update_http_request).set_source_url("https://stuart-c.github.io/esphome-voice-assistant/dev/voice-assistant.manifest.json");
       - component.update: update_http_request
     on_turn_off:
       - logger.log: "OTA updates set to use Production firmware"
-      - lambda: id(update_http_request).set_source_url("https://stuart-c.github.io/voice-assistant/voice-assistant/manifest.json");
+      - lambda: id(update_http_request).set_source_url("https://stuart-c.github.io/esphome-voice-assistant/voice-assistant.manifest.json");
       - component.update: update_http_request
