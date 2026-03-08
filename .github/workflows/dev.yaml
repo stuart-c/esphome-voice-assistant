@@ -46,14 +46,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          mkdir -p public/manifest
+          mkdir -p public/dev
 
           # Download dev release
           gh release download dev \
             --repo "${{ github.repository }}" \
             --pattern "*.json" \
             --pattern "*.bin" \
-            --dir public || true
+            --dir public/dev || true
 
       - name: Create index.html
         run: |
@@ -90,11 +90,11 @@ jobs:
               <ul>
           HEADER
 
-          for manifest in public/*.json; do
+          for manifest in public/dev/*.json; do
             if [ -f "$manifest" ]; then
               filename=$(basename "$manifest")
               target="${filename%.manifest.json}"
-              echo "        <li><a href=\"${filename}\">${target}</a> - <code>${BASE_URL}/${filename}</code></li>" >> public/index.html
+              echo "        <li><a href=\"${filename}\">${target}</a> - <code>${BASE_URL}/dev/${filename}</code></li>" >> public/index.html
             fi
           done
 
