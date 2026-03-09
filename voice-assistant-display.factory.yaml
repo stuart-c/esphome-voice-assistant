@@ -29,6 +29,7 @@ update:
     name: None
     id: update_http_request
     source: https://stuart-c.github.io/esphome-voice-assistant/voice-assistant-display.manifest.json
+    update_interval: 10min
 
 dashboard_import:
   package_import_url: github://stuart-c/voice-assistant/voice-assistant-display.yaml
