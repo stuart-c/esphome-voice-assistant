@@ -829,7 +829,7 @@ external_components:
       type: git
       url: "https://github.com/sw3Dan/waveshare-s2-audio_esphome_voice"
       ref: main
-    components: [ es8311 ]
+    components: [es8311]
     refresh: 24h
 
 micro_wake_word:
@@ -854,7 +854,7 @@ micro_wake_word:
   on_wake_word_detected:
     - logger.log:
         format: "Wake word detected: %s"
-        args: [ wake_word.c_str() ]
+        args: [wake_word.c_str()]
     # If the wake word is detected when the device is muted (Possible with the software mute switch): Do nothing
     - if:
         condition:

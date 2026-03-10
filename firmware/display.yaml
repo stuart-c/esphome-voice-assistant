@@ -18,7 +18,7 @@ globals:
 
 external_components:
   - source: github://kylehase/ESPHome-ST7305-RLCD
-    components: [ st7305_rlcd ]
+    components: [st7305_rlcd]
     refresh: 24h
 
 # Display
@@ -198,19 +198,19 @@ select:
     icon: "mdi:monitor-screenshot"
     optimistic: true
     options:
-     - "Clock"
-     - "Daily Weather"
-     - "Weekly Weather"
-     - "Timers"
-     - "Note"
-     - "Page 1"
-     - "Page 2"
-     - "Page 3"
-     - "Page 4"
-     - "Page 5"
-     - "Page 6"
-     - "Page 7"
-     - "Page 8"
+      - "Clock"
+      - "Daily Weather"
+      - "Weekly Weather"
+      - "Timers"
+      - "Note"
+      - "Page 1"
+      - "Page 2"
+      - "Page 3"
+      - "Page 4"
+      - "Page 5"
+      - "Page 6"
+      - "Page 7"
+      - "Page 8"
     initial_option: "Clock"
     on_value:
       then:
