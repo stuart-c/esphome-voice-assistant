@@ -140,6 +140,8 @@ ota:
 
 # Bluetooth Proxy
 esp32_ble_tracker:
+  interval: 320ms # default 320ms. Time spent per adv channel
+  window: 290ms # default 30ms. Time spent listening during interval.
 
 bluetooth_proxy:
   active: true
