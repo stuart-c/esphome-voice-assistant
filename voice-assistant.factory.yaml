@@ -28,7 +28,7 @@ update:
   - platform: http_request
     name: None
     id: update_http_request
-    source: https://stuart-c.github.io/esphome-voice-assistant/voice-assistant.manifest.json
+    source: https://stuart-c.github.io/esphome-voice-assistant/dev/voice-assistant.manifest.json
     update_interval: 10min
 
 dashboard_import:
