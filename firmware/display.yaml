@@ -1,12 +1,24 @@
 esphome:
   includes:
     - <sstream>
+    - <vector>
+    - <algorithm>
 
 globals:
   # Temporary variable to store previous screen
   - id: previous_screen
     type: std::string
     restore_value: no
+  # Stored screen before timer started
+  - id: timer_previous_screen
+    type: std::string
+    restore_value: no
+    initial_value: '"Clock"'
+  # Flag tracking whether timers were active on last check
+  - id: timer_auto_switched
+    type: bool
+    restore_value: no
+    initial_value: 'false'
   # Wrapped version of message
   - id: message_wrapped
     type: std::string
@@ -101,6 +113,7 @@ font:
       - "\ue2bd" # cloud
       - "\uef63" # partly_cloudy_day
       - "\uef66" # rainy
+      - "\ue425" # timer
   - file: "gfonts://Material+Symbols+Outlined"
     id: material_icons_current
     size: 48
@@ -284,8 +297,41 @@ mapping:
       battery-high: "\U000F12A3"
 
 script:
+  - id: manage_timer_screen
+    then:
+      - lambda: |-
+          const auto &timers = id(va).get_timers();
+          bool any_active = false;
+          for (const auto &t : timers) {
+            if (t.is_active) {
+              any_active = true;
+              break;
+            }
+          }
+          bool is_ringing = id(timer_ringing).state;
+
+          // If a timer started or is ringing, and we haven't auto-switched yet
+          if ((any_active || is_ringing) && !id(timer_auto_switched)) {
+            std::string cur = id(screen_name).current_option();
+            if (cur != "Timers" && cur != "Note") {
+              id(timer_previous_screen) = cur;
+              id(timer_auto_switched) = true;
+              id(screen_name).publish_state("Timers");
+            }
+          }
+          // If no timers are active and not ringing, and we had auto-switched
+          else if (!any_active && !is_ringing && id(timer_auto_switched)) {
+            id(timer_auto_switched) = false;
+            std::string cur = id(screen_name).current_option();
+            if (cur == "Timers") {
+              std::string prev = id(timer_previous_screen).empty() ? "Clock" : id(timer_previous_screen);
+              id(screen_name).publish_state(prev.c_str());
+            }
+          }
+
   - id: control_leds
     then:
+      - script.execute: manage_timer_screen
       - component.update: screen
 
   - id: wrap_text
@@ -516,8 +562,254 @@ script:
   - id: screen_timers
     then:
       - lambda: |-
-          //
-          id(status_area_text) = "Timers";
+          auto it = id(screen);
+          auto now = id(rtc_time).now();
+
+          // Collect active timers from voice assistant
+          const auto &all_timers = id(va).get_timers();
+          std::vector<voice_assistant::Timer> active_timers;
+          for (const auto &t : all_timers) {
+            if (t.is_active) {
+              active_timers.push_back(t);
+            }
+          }
+
+          // Sort timers by remaining time ascending (soonest to finish at the top)
+          std::sort(active_timers.begin(), active_timers.end(), [](const voice_assistant::Timer &a, const voice_assistant::Timer &b) {
+            return a.seconds_left < b.seconds_left;
+          });
+
+          bool is_ringing = id(timer_ringing).state;
+          size_t count = active_timers.size();
+
+          // Time formatting helper (HH:MM:SS or MM:SS)
+          auto format_time = [](uint32_t sec) -> std::string {
+            uint32_t h = sec / 3600;
+            uint32_t m = (sec % 3600) / 60;
+            uint32_t s = sec % 60;
+            if (h > 0) {
+              return str_sprintf("%d:%02d:%02d", (int)h, (int)m, (int)s);
+            }
+            return str_sprintf("%02d:%02d", (int)m, (int)s);
+          };
+
+          // Duration formatting helper (e.g. 15m, 1h 30m, 45s)
+          auto format_duration = [](uint32_t sec) -> std::string {
+            uint32_t h = sec / 3600;
+            uint32_t m = (sec % 3600) / 60;
+            uint32_t s = sec % 60;
+            if (h > 0 && m > 0) return str_sprintf("%dh %dm", (int)h, (int)m);
+            if (h > 0) return str_sprintf("%dh", (int)h);
+            if (m > 0 && s > 0) return str_sprintf("%dm %ds", (int)m, (int)s);
+            if (m > 0) return str_sprintf("%dm", (int)m);
+            return str_sprintf("%ds", (int)s);
+          };
+
+          // Timer name resolver: optional custom name or fallback (e.g. "Timer" or "Timer 1")
+          auto get_timer_name = [](const voice_assistant::Timer &t, size_t index, size_t total, size_t max_len) -> std::string {
+            std::string name = t.name;
+            if (name.empty()) {
+              if (total == 1) {
+                name = "Timer";
+              } else {
+                name = str_sprintf("Timer %d", (int)(index + 1));
+              }
+            }
+            if (name.length() > max_len) {
+              name = name.substr(0, max_len - 2) + "..";
+            }
+            return name;
+          };
+
+          // -----------------------------------------------------------
+          // CASE 0: No Active Timers (or Timer Ringing with no others)
+          // -----------------------------------------------------------
+          if (count == 0) {
+            if (is_ringing) {
+              id(status_area_text) = "Timer Ringing!";
+              it->rectangle(20, 25, 360, 220);
+              it->rectangle(23, 28, 354, 214);
+              it->print(200, 55, id(font_header_3), TextAlign::CENTER, "TIMER FINISHED");
+              it->print(200, 130, id(font_time_6), TextAlign::BASELINE_CENTER, "00:00");
+              it->print(200, 185, id(font_header_2), TextAlign::CENTER, "TIME'S UP!");
+              it->print(200, 218, id(font_stats), TextAlign::CENTER, "Press button or say 'Stop'");
+            } else {
+              id(status_area_text) = "No Active Timers";
+              it->print(200, 45, id(font_header_3), TextAlign::CENTER, "TIMERS");
+              it->line(60, 65, 340, 65);
+              it->print(200, 120, id(font_header_2), TextAlign::CENTER, "No Active Timers");
+              it->print(200, 155, id(font_stats), TextAlign::CENTER, "Set a timer using Google Assistant or Assist");
+              if (now.is_valid()) {
+                it->printf(200, 210, id(font_note), TextAlign::CENTER, "Current Time: %02d:%02d",
+                           now.hour % 12 == 0 ? 12 : now.hour % 12, now.minute);
+              }
+            }
+            return;
+          }
+
+          // -----------------------------------------------------------
+          // CASE 1: Exactly 1 Active Timer (Hero View)
+          // -----------------------------------------------------------
+          if (count == 1) {
+            const auto &t = active_timers[0];
+            std::string t_name = get_timer_name(t, 0, 1, 24);
+            std::string t_time = format_time(t.seconds_left);
+            std::string total_str = format_duration(t.total_seconds);
+
+            id(status_area_text) = is_ringing ? "Timer Ringing!" : str_sprintf("1 Active Timer (%s)", t_name.c_str());
+
+            // Header: Name
+            it->print(200, 32, id(font_header_3), TextAlign::CENTER, t_name.c_str());
+            it->line(40, 48, 360, 48);
+
+            // Ringing state if this timer finished
+            if (is_ringing && t.seconds_left == 0) {
+              it->print(200, 125, id(font_time_6), TextAlign::BASELINE_CENTER, "00:00");
+              it->print(200, 175, id(font_header_2), TextAlign::CENTER, "TIME'S UP!");
+              it->print(200, 215, id(font_stats), TextAlign::CENTER, "Press button or say 'Stop'");
+              return;
+            }
+
+            // Big countdown time
+            if (t.seconds_left >= 3600) {
+              it->print(200, 125, id(font_temp_main), TextAlign::BASELINE_CENTER, t_time.c_str());
+            } else {
+              it->print(200, 130, id(font_time_6), TextAlign::BASELINE_CENTER, t_time.c_str());
+            }
+
+            // Progress bar
+            float ratio = 1.0f - ((float)t.seconds_left / (float)std::max(t.total_seconds, (uint32_t)1));
+            if (ratio < 0.0f) ratio = 0.0f;
+            if (ratio > 1.0f) ratio = 1.0f;
+            int bar_x = 40;
+            int bar_y = 155;
+            int bar_w = 320;
+            int bar_h = 14;
+            it->rectangle(bar_x, bar_y, bar_w, bar_h);
+            int fill_w = (int)(ratio * (bar_w - 4));
+            if (fill_w > 0) {
+              it->filled_rectangle(bar_x + 2, bar_y + 2, fill_w, bar_h - 4);
+            }
+
+            // Sub-info row
+            it->printf(bar_x, 185, id(font_note), TextAlign::TOP_LEFT, "Total: %s", total_str.c_str());
+            it->printf(bar_x + bar_w, 185, id(font_note), TextAlign::TOP_RIGHT, "%d%% elapsed", (int)(ratio * 100));
+
+            // ETA
+            if (now.is_valid()) {
+              time_t finish_epoch = now.timestamp + t.seconds_left;
+              auto finish_time = ESPTime::from_epoch_local(finish_epoch);
+              it->printf(200, 230, id(font_stats), TextAlign::CENTER, "Finishes at %02d:%02d",
+                         finish_time.hour % 12 == 0 ? 12 : finish_time.hour % 12, finish_time.minute);
+            }
+            return;
+          }
+
+          // -----------------------------------------------------------
+          // CASE 2: Exactly 2 Active Timers (Two Stacked Cards)
+          // -----------------------------------------------------------
+          if (count == 2) {
+            id(status_area_text) = is_ringing ? "Timer Ringing!" : "2 Active Timers";
+
+            for (size_t i = 0; i < 2; i++) {
+              const auto &t = active_timers[i];
+              std::string t_name = get_timer_name(t, i, 2, 16);
+              std::string t_time = format_time(t.seconds_left);
+              std::string total_str = format_duration(t.total_seconds);
+
+              int y_base = (i == 0) ? 12 : 138;
+
+              // Timer Name (Left)
+              it->print(20, y_base + 8, id(font_header_2), TextAlign::TOP_LEFT, t_name.c_str());
+
+              // Sub-info: Total duration & ETA
+              if (now.is_valid()) {
+                time_t finish_epoch = now.timestamp + t.seconds_left;
+                auto finish_time = ESPTime::from_epoch_local(finish_epoch);
+                it->printf(20, y_base + 34, id(font_stats), TextAlign::TOP_LEFT, "Total: %s  |  Ends: %02d:%02d",
+                           total_str.c_str(), finish_time.hour % 12 == 0 ? 12 : finish_time.hour % 12, finish_time.minute);
+              } else {
+                it->printf(20, y_base + 34, id(font_stats), TextAlign::TOP_LEFT, "Total: %s", total_str.c_str());
+              }
+
+              // Countdown time (Right)
+              it->print(380, y_base + 44, id(font_main_temp), TextAlign::BASELINE_RIGHT, t_time.c_str());
+
+              // Progress bar
+              float ratio = 1.0f - ((float)t.seconds_left / (float)std::max(t.total_seconds, (uint32_t)1));
+              if (ratio < 0.0f) ratio = 0.0f;
+              if (ratio > 1.0f) ratio = 1.0f;
+              int bar_y = y_base + 72;
+              it->rectangle(20, bar_y, 360, 10);
+              int fill_w = (int)(ratio * 356);
+              if (fill_w > 0) {
+                it->filled_rectangle(22, bar_y + 2, fill_w, 6);
+              }
+
+              // Divider between the two cards
+              if (i == 0) {
+                it->line(20, 126, 380, 126);
+              }
+            }
+            return;
+          }
+
+          // -----------------------------------------------------------
+          // CASE 3: 3 or More Active Timers (Compact Rows)
+          // -----------------------------------------------------------
+          size_t display_count = std::min((size_t)4, count);
+          if (count > 4) {
+            id(status_area_text) = str_sprintf("%d Timers Active (+%d more)", (int)count, (int)(count - 4));
+          } else {
+            id(status_area_text) = str_sprintf("%d Active Timers", (int)count);
+          }
+
+          int available_h = 250;
+          int spacing = (display_count == 3) ? 10 : 6;
+          int row_h = (available_h - (int)(display_count - 1) * spacing) / (int)display_count;
+
+          for (size_t i = 0; i < display_count; i++) {
+            const auto &t = active_timers[i];
+            std::string t_name = get_timer_name(t, i, count, (display_count == 3 ? 18 : 16));
+            std::string t_time = format_time(t.seconds_left);
+            std::string total_str = format_duration(t.total_seconds);
+
+            int y_top = 10 + i * (row_h + spacing);
+
+            if (display_count == 3) {
+              it->print(20, y_top + 6, id(font_header_2), TextAlign::TOP_LEFT, t_name.c_str());
+              it->printf(20, y_top + 34, id(font_stats), TextAlign::TOP_LEFT, "Total: %s", total_str.c_str());
+              it->print(380, y_top + 38, id(font_main_temp), TextAlign::BASELINE_RIGHT, t_time.c_str());
+
+              float ratio = 1.0f - ((float)t.seconds_left / (float)std::max(t.total_seconds, (uint32_t)1));
+              if (ratio < 0.0f) ratio = 0.0f;
+              if (ratio > 1.0f) ratio = 1.0f;
+              int bar_y = y_top + 56;
+              it->rectangle(20, bar_y, 360, 6);
+              int fill_w = (int)(ratio * 356);
+              if (fill_w > 0) {
+                it->filled_rectangle(22, bar_y + 1, fill_w, 4);
+              }
+            } else {
+              it->print(20, y_top + 4, id(font_day_2), TextAlign::TOP_LEFT, t_name.c_str());
+              it->printf(20, y_top + 24, id(font_label), TextAlign::TOP_LEFT, "%s", total_str.c_str());
+              it->print(380, y_top + 26, id(font_header_3), TextAlign::BASELINE_RIGHT, t_time.c_str());
+
+              float ratio = 1.0f - ((float)t.seconds_left / (float)std::max(t.total_seconds, (uint32_t)1));
+              if (ratio < 0.0f) ratio = 0.0f;
+              if (ratio > 1.0f) ratio = 1.0f;
+              int bar_y = y_top + 42;
+              it->rectangle(20, bar_y, 360, 5);
+              int fill_w = (int)(ratio * 356);
+              if (fill_w > 0) {
+                it->filled_rectangle(22, bar_y + 1, fill_w, 3);
+              }
+            }
+
+            if (i < display_count - 1) {
+              it->line(20, y_top + row_h + (spacing / 2), 380, y_top + row_h + (spacing / 2));
+            }
+          }
 
   - id: screen_note
     then:
