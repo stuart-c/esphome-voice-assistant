@@ -221,12 +221,12 @@ mapping:
     from: string
     to: string
     entries:
-      timer:              "\ue425"
-      wb_sunny:           "\ue518"
-      cloud:              "\ue2bd"
-      partly_cloudy_day:  "\uef63"
-      rainy:              "\uef66"
-      battery_full:       "\ue1a4"
+      timer: "\ue425"
+      wb_sunny: "\ue518"
+      cloud: "\ue2bd"
+      partly_cloudy_day: "\uef63"
+      rainy: "\uef66"
+      battery_full: "\ue1a4"
 
 #    glyphs: &mdi-weather-glyphs
 #      - "\U000F0590" # mdi-weather-cloudy
@@ -261,27 +261,27 @@ mapping:
 #      - "\U000F059E" # mdi-weather-windy-variant
 
       # WiFi
-      wifi-strength-off:        "\U000F092D"
-      wifi-strength-0:          "\U000F092F"
-      wifi-strength-0-alert:    "\U000F092B"
-      wifi-strength-1:          "\U000F091F"
-      wifi-strength-1-alert:    "\U000F0920"
-      wifi-strength-2:          "\U000F0922"
-      wifi-strength-2-alert:    "\U000F0923"
-      wifi-strength-3:          "\U000F0925"
-      wifi-strength-3-alert:    "\U000F0926"
-      wifi-strength-4:          "\U000F0928"
-      wifi-strength-4-alert:    "\U000F0929"
+      wifi-strength-off: "\U000F092D"
+      wifi-strength-0: "\U000F092F"
+      wifi-strength-0-alert: "\U000F092B"
+      wifi-strength-1: "\U000F091F"
+      wifi-strength-1-alert: "\U000F0920"
+      wifi-strength-2: "\U000F0922"
+      wifi-strength-2-alert: "\U000F0923"
+      wifi-strength-3: "\U000F0925"
+      wifi-strength-3-alert: "\U000F0926"
+      wifi-strength-4: "\U000F0928"
+      wifi-strength-4-alert: "\U000F0929"
 
       # Microphone
-      microphone:               "\U000F036C"
-      microphone-message:       "\U000F050A"
-      microphone-off:           "\U000F036D"
+      microphone: "\U000F036C"
+      microphone-message: "\U000F050A"
+      microphone-off: "\U000F036D"
 
       # Battery
-      battery-low:              "\U000F12A1"
-      battery-medium:           "\U000F12A2"
-      battery-high:             "\U000F12A3"
+      battery-low: "\U000F12A1"
+      battery-medium: "\U000F12A2"
+      battery-high: "\U000F12A3"
 
 script:
   - id: control_leds
