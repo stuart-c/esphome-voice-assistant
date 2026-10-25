@@ -56,6 +56,13 @@ jobs:
             --pattern "*.bin" \
             --dir public/dev || true
 
+          # Download latest production release if available
+          gh release download \
+            --repo "${{ github.repository }}" \
+            --pattern "*.json" \
+            --pattern "*.bin" \
+            --dir public || true
+
       - name: Create index.html
         run: |
           REPO_OWNER=$(echo "${{ github.repository }}" | cut -d'/' -f1)
@@ -90,16 +97,32 @@ jobs:
             <p>Pre-built Voice Assistant firmware binaries for ESPHome.</p>
 
             <div class="manifest-section">
-              <h3>Manifests (JSON)</h3>
-              <p>Machine-readable manifests with all versions, URLs, and SHA256 checksums:</p>
+              <h3>Production Firmware</h3>
               <ul>
           HEADER
+
+          for manifest in public/*.json; do
+            if [ -f "$manifest" ]; then
+              filename=$(basename "$manifest")
+              target="${filename%.manifest.json}"
+              echo "        <li><esp-web-install-button manifest=\"${filename}\"></esp-web-install-button> <a href=\"${filename}\">${target}</a> - <code>${BASE_URL}/${filename}</code></li>" >> public/index.html
+            fi
+          done
+
+          cat >> public/index.html << 'SECTION_DEV'
+              </ul>
+            </div>
+
+            <div class="manifest-section">
+              <h3>Development Firmware</h3>
+              <ul>
+          SECTION_DEV
 
           for manifest in public/dev/*.json; do
             if [ -f "$manifest" ]; then
               filename=$(basename "$manifest")
               target="${filename%.manifest.json}"
-              echo "        <li><esp-web-install-button manifest="dev/${filename}"></esp-web-install-button> <a href=\"dev/${filename}\">${target}</a> - <code>${BASE_URL}/dev/${filename}</code></li>" >> public/index.html
+              echo "        <li><esp-web-install-button manifest=\"dev/${filename}\"></esp-web-install-button> <a href=\"dev/${filename}\">${target}</a> - <code>${BASE_URL}/dev/${filename}</code></li>" >> public/index.html
             fi
           done
 
