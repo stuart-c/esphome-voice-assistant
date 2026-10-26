@@ -4,6 +4,7 @@ extends: default
 ignore-from-file: .gitignore
 
 rules:
+  colons: disable
   comments: disable
   comments-indentation: disable
   document-start: disable
